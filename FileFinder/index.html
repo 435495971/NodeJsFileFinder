@@ -1,0 +1,108 @@
+﻿<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+</head>
+<body>
+    选择工作区：<select id="workplace"  multiple="multiple" size="5"></select>
+    <button id="addWorkPlace" ">添加工作区</button>
+    <br />
+    关键字：<input type="text" id="testInput" />
+    <button onclick="findWord()" >点击</button>  
+    <div id="show"></div>
+    <script>
+        //引入child_process模块
+        var child_process = require("child_process");
+        var {remote} = require("electron");
+        var {shell} = remote
+        var {ipcRenderer} = require("electron");
+        var con = remote.require("./sqlite3.js");
+        var natural = require('natural')
+        var tokenizer = new natural.WordTokenizer();
+        var dirwalker = remote.require("./DirWalk.js");
+        var path = require("path");
+        var fs = require("fs");
+
+        
+        var workpalce = document.getElementById("workplace");
+        var divshow = document.getElementById("show");
+        fs.readdir("./", (err, files) => {
+            if (err) {
+                console.log(err);
+                return;
+            }
+            files.forEach((file) => {
+                if (file.endsWith(".db")) {
+                    console.log("--Find db:" + file);
+                    var option = document.createElement("option");
+                    option.innerHTML = new Buffer(file, "base64").toString();
+                    option.value = file.substring(0, file.length - 3);
+                    workpalce.appendChild(option);
+                }
+            });
+        });
+        function findWord() {
+            divshow.innerHTML = "";
+            var testInput = document.getElementById('testInput');
+            for (var i = 0; i < workplace.selectedOptions.length; i++)
+                con.findWord(workplace.selectedOptions.item(i).value, tokenizer.tokenize(testInput.value));
+            
+        }
+        ipcRenderer.on("clear", (event, args) => {
+            divshow.innerHTML = "";
+            console.log("get clear");
+        })
+        ipcRenderer.on("add", (event, args) => {
+            var p = document.createElement("p");
+            p.innerHTML = args.filepath;
+            p.value = args.filepath;
+            var f = {
+                open: () => {
+                    console.log(f.filepath);
+                    shell.openItem(f.filepath);
+                }
+            }
+            f.filepath = args.filepath;
+            p.onclick = f.open;
+            divshow.appendChild(p);
+            console.log("get Add");
+        })
+        var workPlaceBTN = document.getElementById("addWorkPlace");
+        workPlaceBTN.addEventListener("click", (event) => {
+            ipcRenderer.send("open-file-dialog");
+        });
+        ipcRenderer.on("selected-directory", (event, paths) => {
+            arg = [__dirname + "/Init.js"]
+            paths.forEach((path) => {
+                var workplace = document.getElementById("workplace");
+                var option = document.createElement("option");
+                option.value = path;
+                option.innerHTML = path;
+                workplace.appendChild(option);
+                arg.push(new Buffer(path).toString("base64"));
+            });
+            
+            //启动自定义的init线程
+            let initProcess;
+            if (process.platform == 'win32')
+                initProcess = child_process.spawn(__dirname + "/node_modules/.bin/electron.cmd", arg);
+            else
+                initProcess = child_process.spawn(__dirname + "/node_modules/.bin/electron", arg);
+
+            initProcess.stdout.on('data', function (data) {
+                console.log('stdout: ' + data);
+            });
+
+            initProcess.stderr.on('data', function (data) {
+                console.log('stderr: ' + new Buffer(data, "gb2312"));
+            });
+
+            initProcess.on('close', function (code) {
+                console.log('child process exited with code ' + code);
+            });
+        });
+    </script>
+</body>
+</html>
